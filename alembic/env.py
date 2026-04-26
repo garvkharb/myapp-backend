@@ -1,4 +1,6 @@
+import os  # Add this at the top
 from logging.config import fileConfig
+# ... existing imports
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -28,18 +30,13 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
+    """Run migrations in 'offline' mode."""
+    url = os.environ.get("DATABASE_URL")
+    
+    # Critical Fix: SQLAlchemy 2.0 requires 'postgresql://' not 'postgres://'
+    if url and url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
 
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -52,24 +49,24 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
+    # Get the database URL from Render's environment variables
+    db_url = os.environ.get("DATABASE_URL")
+    
+    # If the URL starts with 'postgres://', change it to 'postgresql://' 
+    # (Render sometimes provides 'postgres://' which SQLAlchemy 2.0 doesn't like)
+    if db_url and db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # Use the dynamic URL instead of the one from alembic.ini
+    from sqlalchemy import create_engine
+    connectable = create_engine(db_url, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
         context.configure(
             connection=connection, target_metadata=target_metadata
         )
 
-        with context.begin_transaction():
+        with connectable.begin(): # Using begin() handles the transaction automatically
             context.run_migrations()
 
 
